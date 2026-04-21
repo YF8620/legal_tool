@@ -267,6 +267,7 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/docx.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
     <script>
         function formatLegal() {
@@ -280,87 +281,78 @@
 
         async function exportWord() {
             const text = document.getElementById("preview").innerText;
-            const { Document, Paragraph, Packer } = window.docx;
+            const { Document, Paragraph, Packer, TextRun, HeadingLevel } = window.docx;
+
+            const paragraphs = text.split("\n").filter(line => line.trim()).map(line => {
+                return new Paragraph({
+                    children: [
+                        new TextRun({
+                            text: line,
+                            size: 28,
+                            font: "宋体",
+                            theme: { type: "宋体" }
+                        })
+                    ],
+                    spacing: {
+                        after: 200,
+                        line: 360
+                    },
+                    indent: {
+                        firstLine: 560
+                    }
+                });
+            });
+
             const doc = new Document({
                 sections: [{
-                    children: text.split("\n").map(line => new Paragraph(line))
+                    properties: {},
+                    children: paragraphs
                 }]
             });
-            const blob = await Packer.toBlob(doc);
-            saveAs(blob, "法律文书.docx");
+
+            try {
+                const blob = await Packer.toBlob(doc);
+                saveAs(blob, "青少年犯罪法律文书.docx");
+            } catch (error) {
+                alert("导出Word失败，请重试");
+                console.error(error);
+            }
         }
 
-        function exportPDF() {
-            const text = document.getElementById("preview").innerText;
+        async function exportPDF() {
+            const preview = document.getElementById("preview");
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
 
-            doc.setFont('helvetica');
-            doc.setFontSize(12);
+            try {
+                const canvas = await html2canvas(preview, {
+                    scale: 3,
+                    useCORS: true,
+                    backgroundColor: '#ffffff',
+                    logging: false
+                });
 
-            const pageWidth = doc.internal.pageSize.getWidth();
-            const pageHeight = doc.internal.pageSize.getHeight();
-            const margin = 25;
-            const maxWidth = pageWidth - margin * 2;
-            const lineHeight = 7;
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
 
-            const lines = text.split('\n');
-            let y = margin;
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = pdf.internal.pageSize.getHeight();
+                const imgWidth = canvas.width;
+                const imgHeight = canvas.height;
 
-            doc.setFont('helvetica', 'normal');
+                const ratio = Math.min(pdfWidth / imgWidth * 10, pdfHeight / imgHeight * 10);
+                const finalWidth = imgWidth * ratio / 10;
+                const finalHeight = imgHeight * ratio / 10;
 
-            lines.forEach(line => {
-                if (y > pageHeight - margin) {
-                    doc.addPage();
-                    y = margin;
-                }
-
-                if (line.trim() === '') {
-                    y += lineHeight * 0.5;
-                    return;
-                }
-
-                const lineText = line.trim();
-                const textWidth = doc.getTextWidth(lineText);
-
-                if (textWidth <= maxWidth) {
-                    doc.text(lineText, margin, y);
-                    y += lineHeight;
-                } else {
-                    const chars = lineText.split('');
-                    let currentLine = '';
-                    let currentWidth = 0;
-
-                    for (let char of chars) {
-                        const charWidth = doc.getTextWidth(char);
-                        if (currentWidth + charWidth > maxWidth) {
-                            doc.text(currentLine, margin, y);
-                            y += lineHeight;
-                            currentLine = char;
-                            currentWidth = charWidth;
-
-                            if (y > pageHeight - margin) {
-                                doc.addPage();
-                                y = margin;
-                            }
-                        } else {
-                            currentLine += char;
-                            currentWidth += charWidth;
-                        }
-                    }
-
-                    if (currentLine) {
-                        doc.text(currentLine, margin, y);
-                        y += lineHeight;
-                    }
-                }
-            });
-
-            doc.save("青少年犯罪法律文书.pdf");
+                pdf.addImage(imgData, 'PNG', 0, 0, finalWidth, finalHeight);
+                pdf.save("青少年犯罪法律文书.pdf");
+            } catch (error) {
+                alert("导出PDF失败，请重试");
+                console.error(error);
+            }
         }
     </script>
 </body>
