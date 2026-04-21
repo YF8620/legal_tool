@@ -293,9 +293,74 @@
         function exportPDF() {
             const text = document.getElementById("preview").innerText;
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            doc.text(text, 14, 14, { maxWidth: 180, lineHeightFactor: 1.6 });
-            doc.save("法律文书.pdf");
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            doc.setFont('helvetica');
+            doc.setFontSize(12);
+
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 25;
+            const maxWidth = pageWidth - margin * 2;
+            const lineHeight = 7;
+
+            const lines = text.split('\n');
+            let y = margin;
+
+            doc.setFont('helvetica', 'normal');
+
+            lines.forEach(line => {
+                if (y > pageHeight - margin) {
+                    doc.addPage();
+                    y = margin;
+                }
+
+                if (line.trim() === '') {
+                    y += lineHeight * 0.5;
+                    return;
+                }
+
+                const lineText = line.trim();
+                const textWidth = doc.getTextWidth(lineText);
+
+                if (textWidth <= maxWidth) {
+                    doc.text(lineText, margin, y);
+                    y += lineHeight;
+                } else {
+                    const chars = lineText.split('');
+                    let currentLine = '';
+                    let currentWidth = 0;
+
+                    for (let char of chars) {
+                        const charWidth = doc.getTextWidth(char);
+                        if (currentWidth + charWidth > maxWidth) {
+                            doc.text(currentLine, margin, y);
+                            y += lineHeight;
+                            currentLine = char;
+                            currentWidth = charWidth;
+
+                            if (y > pageHeight - margin) {
+                                doc.addPage();
+                                y = margin;
+                            }
+                        } else {
+                            currentLine += char;
+                            currentWidth += charWidth;
+                        }
+                    }
+
+                    if (currentLine) {
+                        doc.text(currentLine, margin, y);
+                        y += lineHeight;
+                    }
+                }
+            });
+
+            doc.save("青少年犯罪法律文书.pdf");
         }
     </script>
 </body>
