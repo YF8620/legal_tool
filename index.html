@@ -1173,100 +1173,89 @@ XXXX年X月X日`;
       const text = preview.innerText || preview.textContent;
       if (!text) return alert("请先生成文书再导出");
 
-      const lines = text.split("\n");
-      const title = lines[0];
-      const content = lines.slice(1).join("<br>");
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
 
-      const printContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>法律文书</title>
-          <style>
-            @page {
-              size: A4;
-              margin: 25mm 20mm;
-            }
-            body {
-              margin: 0;
-              padding: 40px;
-              font-family: "Microsoft YaHei", "SimSun", sans-serif;
-              font-size: 16px;
-              line-height: 1.8;
-              white-space: pre-wrap;
-              text-align: justify;
-            }
-            .title {
-              text-align: center;
-              font-weight: bold;
-              font-size: 20px;
-              margin-bottom: 20px;
-            }
-            @media print {
-              body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-            }
-          </style>
-        </head>
-        <body><div class="title">${title}</div><br>${content}</body>
-        </html>
-      `;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginTop = 25;
+      const marginBottom = 25;
+      const marginLeft = 20;
+      const marginRight = 20;
+      const contentWidth = pageWidth - marginLeft - marginRight;
+      const contentHeight = pageHeight - marginTop - marginBottom;
 
-      const isInMiniApp = typeof wx !== 'undefined' || typeof uni !== 'undefined' || 
-                          window.navigator.userAgent.includes('MiniProgram') ||
-                          window.navigator.userAgent.includes('micromessenger');
+      const previewRect = preview.getBoundingClientRect();
+      const previewWidth = previewRect.width;
 
-      if (isInMiniApp) {
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.style.position = 'absolute';
-        iframe.style.width = '0';
-        iframe.style.height = '0';
-        iframe.style.border = '0';
-        document.body.appendChild(iframe);
-        
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-        iframeDoc.open();
-        iframeDoc.write(printContent);
-        iframeDoc.close();
-        
-        iframe.contentWindow.onload = function() {
-          setTimeout(() => {
-            iframe.contentWindow.print();
-            document.body.removeChild(iframe);
-          }, 300);
-        };
-        
-        setTimeout(() => {
-          if (document.body.contains(iframe)) {
-            iframe.contentWindow.print();
-            document.body.removeChild(iframe);
+      const tempDiv = document.createElement('div');
+      tempDiv.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:' + previewWidth + 'px;padding:20px;background:white;font-family:Microsoft YaHei,sans-serif;font-size:18px;line-height:1.8;color:#000;white-space:pre-wrap;word-wrap:break-word;';
+      tempDiv.innerHTML = preview.innerHTML;
+      document.body.appendChild(tempDiv);
+
+      html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      }).then(canvas => {
+        document.body.removeChild(tempDiv);
+
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+
+        const fontSize = 18;
+        const lineHeight = fontSize * 1.8;
+        const renderedLineHeight = canvasHeight / Math.ceil(canvasHeight / lineHeight);
+        const linesPerPage = Math.floor(contentHeight / renderedLineHeight);
+        const pageSliceHeightPx = linesPerPage * renderedLineHeight;
+        const pageSliceHeightMm = linesPerPage * renderedLineHeight * (contentWidth / canvasWidth);
+
+        let pagePosY = marginTop;
+        let canvasY = 0;
+
+        while (canvasY < canvasHeight) {
+          let sliceHeightPx = pageSliceHeightPx;
+
+          if (canvasY + sliceHeightPx > canvasHeight) {
+            sliceHeightPx = canvasHeight - canvasY;
+            const remainingLines = Math.round(sliceHeightPx / renderedLineHeight);
+            sliceHeightPx = remainingLines * renderedLineHeight;
+            if (sliceHeightPx < renderedLineHeight) {
+              canvasY += sliceHeightPx;
+              continue;
+            }
           }
-        }, 500);
-      } else {
-        const printWindow = window.open('', '_self');
-        if (!printWindow) {
-          const iframe = document.createElement('iframe');
-          iframe.style.display = 'none';
-          document.body.appendChild(iframe);
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-          iframeDoc.open();
-          iframeDoc.write(printContent);
-          iframeDoc.close();
-          setTimeout(() => {
-            iframe.contentWindow.print();
-            document.body.removeChild(iframe);
-          }, 300);
-          return;
+
+          const sliceHeightMm = sliceHeightPx * (contentWidth / canvasWidth);
+
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = canvasWidth;
+          tempCanvas.height = sliceHeightPx;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.fillStyle = '#ffffff';
+          tempCtx.fillRect(0, 0, canvasWidth, sliceHeightPx);
+          tempCtx.drawImage(canvas, 0, canvasY, canvasWidth, sliceHeightPx, 0, 0, canvasWidth, sliceHeightPx);
+
+          if (pagePosY + sliceHeightMm > marginTop + contentHeight) {
+            doc.addPage();
+            pagePosY = marginTop;
+          }
+
+          doc.addImage(tempCanvas.toDataURL('image/png'), 'PNG', marginLeft, pagePosY, contentWidth, sliceHeightMm);
+          pagePosY += sliceHeightMm;
+          canvasY += sliceHeightPx;
         }
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-          printWindow.close();
-        }, 250);
-      }
+
+        doc.save("法律文书.pdf");
+      }).catch(err => {
+        document.body.removeChild(tempDiv);
+        alert("PDF生成失败，请重试");
+      });
     }
   </script>
 </body>
