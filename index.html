@@ -1177,7 +1177,7 @@ XXXX年X月X日`;
       const title = lines[0];
       const content = lines.slice(1).join("<br>");
 
-      const printWindow = window.open('', '_blank');
+      const printWindow = window.open('', '_self');
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
